@@ -6,12 +6,12 @@
 
 #include "threadpool.h"
 
-
-int create_task_list(task_list_t *task_list) {
+int create_task_list(task_list_t *task_list, int polling_delay) {
   task_list->n_tasks = 0;
   task_list->first_task = NULL;
   task_list->last_task = NULL;
-	task_list->should_stop = 0;
+  task_list->should_stop = 0;
+  task_list->polling_delay = polling_delay;
 
   task_list->tasks_lock = malloc(sizeof(pthread_mutex_t));
   if (pthread_mutex_init(task_list->tasks_lock, NULL) != 0) {
@@ -29,13 +29,11 @@ int create_task_list(task_list_t *task_list) {
 int add_task_to_task_list(task_t *task, task_list_t *task_list) {
   pthread_mutex_lock(task_list->tasks_lock);
 
-
-	if (task_list->n_tasks > 0) {
-  	task_list->last_task->next = task;
-	}
-	else {
+  if (task_list->n_tasks > 0) {
+    task_list->last_task->next = task;
+  } else {
     task_list->first_task = task;
-	}
+  }
 
   task_list->last_task = task;
   task_list->n_tasks += 1;
@@ -45,11 +43,10 @@ int add_task_to_task_list(task_t *task, task_list_t *task_list) {
   return 0;
 }
 
-
 int take_task_from_task_list(task_t *task, task_list_t *task_list) {
   pthread_mutex_lock(task_list->tasks_lock);
 
-	int found_valid_task = -1;
+  int found_valid_task = -1;
   if (task_list->n_tasks > 0) {
     task_t *first_task = task_list->first_task;
     memcpy(task, first_task, sizeof(task_t));
@@ -63,7 +60,7 @@ int take_task_from_task_list(task_t *task, task_list_t *task_list) {
       task_list->last_task = NULL;
     }
 
-		found_valid_task = 0;
+    found_valid_task = 0;
   }
 
   pthread_mutex_unlock(task_list->tasks_lock);
@@ -71,34 +68,34 @@ int take_task_from_task_list(task_t *task, task_list_t *task_list) {
   return found_valid_task;
 }
 
-int stop_task_list(task_list_t* task_list) {
+int stop_task_list(task_list_t *task_list) {
   pthread_mutex_lock(task_list->stop_lock);
-	task_list->should_stop = 1;
+  task_list->should_stop = 1;
   pthread_mutex_unlock(task_list->stop_lock);
 
-	return 0;
+  return 0;
 }
 
-int should_stop(task_list_t* task_list) {
+int should_stop(task_list_t *task_list) {
   pthread_mutex_lock(task_list->stop_lock);
-	int should_stop = task_list->should_stop;
+  int should_stop = task_list->should_stop;
 
-	if (should_stop) {
-		pthread_mutex_lock(task_list->tasks_lock);
-		should_stop = task_list->n_tasks == 0;
-		pthread_mutex_unlock(task_list->tasks_lock);
-	}
+  if (should_stop) {
+    pthread_mutex_lock(task_list->tasks_lock);
+    should_stop = task_list->n_tasks == 0;
+    pthread_mutex_unlock(task_list->tasks_lock);
+  }
 
   pthread_mutex_unlock(task_list->stop_lock);
 
-	return should_stop;
+  return should_stop;
 }
 
 int destroy_task_list(task_list_t *task_list) {
   task_t *task;
 
-	// FIX This is very inefficient, should be a custom remove function
-	// FIX Current implementation also does not free the last task
+  // FIX This is very inefficient, should be a custom remove function
+  // FIX Current implementation also does not free the last task
   while (task_list->n_tasks > 0) {
     take_task_from_task_list(task, task_list);
   }
@@ -113,34 +110,34 @@ int destroy_task_list(task_list_t *task_list) {
 }
 
 void *run_thread(void *arg) {
-  task_list_t *task_list = (task_list_t*) arg;
+  task_list_t *task_list = (task_list_t *)arg;
 
   task_t *task = malloc(sizeof(task_t));
 
+  while (!should_stop(task_list)) {
+    if (take_task_from_task_list(task, task_list) == 0) {
+      task->task_executor(task->input_arguments);
+    } else {
+      usleep(task_list->polling_delay);
+    }
+  }
 
-	while (!should_stop(task_list)) {
-		if (take_task_from_task_list(task, task_list) == 0) {
-			task->task_executor(task->input_arguments);
-		}
-		else {
-			usleep(THREAD_NO_TASK_DELAY_US);
-		}
-	}
-
-	free(task);
+  free(task);
 
   return NULL;
 }
 
-int create_threadpool(int n_threads, threadpool_t *threadpool) {
+int create_threadpool(int n_threads, int polling_delay,
+                      threadpool_t *threadpool) {
   threadpool->n_threads = n_threads;
   threadpool->threads = malloc(sizeof(pthread_t) * n_threads);
 
   threadpool->task_list = malloc(sizeof(task_list_t));
-  create_task_list(threadpool->task_list);
+  create_task_list(threadpool->task_list, polling_delay);
 
   for (size_t i = 0; i < n_threads; i++) {
-    pthread_create(&threadpool->threads[i], NULL, run_thread, threadpool->task_list);
+    pthread_create(&threadpool->threads[i], NULL, run_thread,
+                   threadpool->task_list);
   }
 
   return 0;
@@ -159,7 +156,7 @@ int add_task_to_threadpool(void (*task_executor)(void *input_arguments),
 }
 
 int destroy_threadpool(threadpool_t *threadpool) {
-	stop_task_list(threadpool->task_list);
+  stop_task_list(threadpool->task_list);
 
   for (size_t i = 0; i < threadpool->n_threads; i++) {
     pthread_join(threadpool->threads[i], NULL);

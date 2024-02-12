@@ -4,9 +4,6 @@
 #ifndef THREADPOOL_H
 #define THREADPOOL_H
 
-// US => in microseconds
-static const int THREAD_NO_TASK_DELAY_US = 100 * 1000;
-
 typedef struct task {
   struct task *next;
   void *input_arguments;
@@ -17,7 +14,8 @@ typedef struct task_list {
   size_t n_tasks;
   task_t *first_task;
   task_t *last_task;
-	int should_stop;
+  int polling_delay;
+  int should_stop;
 
   pthread_mutex_t *tasks_lock;
   pthread_mutex_t *stop_lock;
@@ -30,7 +28,11 @@ typedef struct threadpool {
   task_list_t *task_list;
 } threadpool_t;
 
-int create_threadpool(int n_threads, threadpool_t *threadpool);
+// n_threads: number of threads to spawn
+// polling_delay: how much the thread should wait before polling again if there
+// are no tasks in the queue
+int create_threadpool(int n_threads, int polling_delay,
+                      threadpool_t *threadpool);
 int destroy_threadpool(threadpool_t *threadpool);
 
 int add_task_to_threadpool(void (*task_executor)(void *input_arguments),

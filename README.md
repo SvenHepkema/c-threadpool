@@ -7,37 +7,37 @@ C-threadpool is a threadpool implementation in c, originally written for my [c i
 This is an example of how you can use the threadpool:
 
 ``` c
-#include<stdio.h>
-#include<stdlib.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "src/threadpool.h"
 
-const int N_TASKS = 1000;
+const int N_TASKS = 10000;
 
-void print_integer(void* input_arguments) {
-	int* integer = (int*) input_arguments;
-	printf("The number is %d\n", *integer);
-	free(integer);
+void print_integer(void *input_arguments) {
+  int *integer = (int *)input_arguments;
+  printf("The number is %d\n", *integer);
+  free(integer);
 }
 
 int main() {
-	// Creating the threadpool
-	threadpool_t* threadpool = malloc(sizeof(threadpool_t));
-	create_threadpool(10, threadpool);
+  // Creating the threadpool
+  threadpool_t *threadpool = malloc(sizeof(threadpool_t));
+  create_threadpool(10, 100, threadpool);
 
-	// Adding all the tasks
-	for (int i = 0; i < N_TASKS; i++) {
-		int* integer = malloc(sizeof(int));
-		*integer = i;
+  // Adding all the tasks
+  for (int i = 0; i < N_TASKS; i++) {
+    int *integer = malloc(sizeof(int));
+    *integer = i;
 
-		add_task_to_threadpool(print_integer, integer, threadpool);
-	}
+    add_task_to_threadpool(print_integer, integer, threadpool);
+  }
 
-	// Destroying the threadpool
-	destroy_threadpool(threadpool);
-	free(threadpool);
+  // Destroying the threadpool
+  destroy_threadpool(threadpool);
+  free(threadpool);
 
-	return 0;
+  return 0;
 }
 ```
 
